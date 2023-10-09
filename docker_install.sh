@@ -1,90 +1,68 @@
 #!/usr/bin/env bash
-
+source <(curl -s https://raw.githubusercontent.com/tteck/Proxmox/main/misc/build.func)
 # Copyright (c) 2021-2023 tteck
 # Author: tteck (tteckster)
 # License: MIT
 # https://github.com/tteck/Proxmox/raw/main/LICENSE
 
-source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
+function header_info {
+clear
+cat <<"EOF"
+    ____             __            
+   / __ \____  _____/ /_  __  _____
+  / / / / __ \/ ___/ //_/ _ \/ ___/
+ / /_/ / /_/ / /__/ ,< /  __/ /    
+/_____/\____/\___/_/|_|\___/_/     
+ 
+EOF
+}
+header_info
+echo -e "Loading..."
+APP="Docker"
+var_disk="64"
+var_cpu="2"
+var_ram="2048"
+var_os="debian"
+var_version="12"
+variables
 color
-verb_ip6
 catch_errors
-setting_up_container
-network_check
-update_os
 
-msg_info "Installing Dependencies"
-$STD apt-get install -y curl
-$STD apt-get install -y sudo
-$STD apt-get install -y mc
-msg_ok "Installed Dependencies"
-
-get_latest_release() {
-  curl -sL https://api.github.com/repos/$1/releases/latest | grep '"tag_name":' | cut -d'"' -f4
+function default_settings() {
+  CT_TYPE="1"
+  PW=""
+  CT_ID=$NEXTID
+  HN=$NSAPP
+  DISK_SIZE="$var_disk"
+  CORE_COUNT="$var_cpu"
+  RAM_SIZE="$var_ram"
+  BRG="vmbr0"
+  NET="dhcp"
+  GATE=""
+  DISABLEIP6="no"
+  MTU=""
+  SD=""
+  NS=""
+  MAC=""
+  VLAN=""
+  SSH="no"
+  FUSE="no"
+  VERB="no"
+  echo_default
 }
 
-DOCKER_LATEST_VERSION=$(get_latest_release "moby/moby")
-PORTAINER_LATEST_VERSION=$(get_latest_release "portainer/portainer")
-PORTAINER_AGENT_LATEST_VERSION=$(get_latest_release "portainer/agent")
-DOCKER_COMPOSE_LATEST_VERSION=$(get_latest_release "docker/compose")
+function update_script() {
+header_info
+if [[ ! -d /var ]]; then msg_error "No ${APP} Installation Found!"; exit; fi
+msg_info "Updating ${APP} LXC"
+apt-get update &>/dev/null
+apt-get -y upgrade &>/dev/null
+msg_ok "Updated ${APP} LXC"
+exit
+}
 
-msg_info "Installing Docker $DOCKER_LATEST_VERSION"
-DOCKER_CONFIG_PATH='/etc/docker/daemon.json'
-mkdir -p $(dirname $DOCKER_CONFIG_PATH)
-if [ "$ST" == "yes" ]; then
-  VER=$(curl -s https://api.github.com/repos/containers/fuse-overlayfs/releases/latest | grep "tag_name" | awk '{print substr($2, 2, length($2)-3) }')
-  cd /usr/local/bin
-  curl -sSL -o fuse-overlayfs https://github.com/containers/fuse-overlayfs/releases/download/$VER/fuse-overlayfs-x86_64
-  chmod 755 /usr/local/bin/fuse-overlayfs
-  cd ~
-  echo -e '{\n  "storage-driver": "fuse-overlayfs",\n  "log-driver": "journald"\n}' >/etc/docker/daemon.json
-else
-  echo -e '{\n  "log-driver": "journald"\n}' >/etc/docker/daemon.json
-fi
-$STD sh <(curl -sSL https://get.docker.com)
-msg_ok "Installed Docker $DOCKER_LATEST_VERSION"
+start
+build_container
+description
 
-read -r -p "Would you like to add Portainer? <y/N> " prompt
-if [[ ${prompt,,} =~ ^(y|yes)$ ]]; then
-  msg_info "Installing Portainer $PORTAINER_LATEST_VERSION"
-  docker volume create portainer_data >/dev/null
-  $STD docker run -d \
-    -p 8000:8000 \
-    -p 9443:9443 \
-    --name=portainer \
-    --restart=always \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -v portainer_data:/data \
-    portainer/portainer-ce:latest
-  msg_ok "Installed Portainer $PORTAINER_LATEST_VERSION"
-else
-  read -r -p "Would you like to add the Portainer Agent? <y/N> " prompt
-  if [[ ${prompt,,} =~ ^(y|yes)$ ]]; then
-    msg_info "Installing Portainer agent $PORTAINER_AGENT_LATEST_VERSION"
-    $STD docker run -d \
-      -p 9001:9001 \
-      --name portainer_agent \
-      --restart=always \
-      -v /var/run/docker.sock:/var/run/docker.sock \
-      -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-      portainer/agent
-    msg_ok "Installed Portainer Agent $PORTAINER_AGENT_LATEST_VERSION"
-  fi
-fi
-read -r -p "Would you like to add Docker Compose? <y/N> " prompt
-if [[ ${prompt,,} =~ ^(y|yes)$ ]]; then
-  msg_info "Installing Docker Compose $DOCKER_COMPOSE_LATEST_VERSION"
-  DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}
-  mkdir -p $DOCKER_CONFIG/cli-plugins
-  curl -sSL https://github.com/docker/compose/releases/download/$DOCKER_COMPOSE_LATEST_VERSION/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
-  chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
-  msg_ok "Installed Docker Compose $DOCKER_COMPOSE_LATEST_VERSION"
-fi
-
-motd_ssh
-customize
-
-msg_info "Cleaning up"
-$STD apt-get autoremove
-$STD apt-get autoclean
-msg_ok "Cleaned"
+msg_ok "Completed Successfully!\n"
